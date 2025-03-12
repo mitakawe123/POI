@@ -1,6 +1,16 @@
+// utils.hpp
 #ifndef UTILS_HPP
 #define UTILS_HPP
 
-void readFilesInDirectory();
+#include <vector>
+#include <string>
+#include <map>
 
-#endif 
+std::vector<std::string> readFilesInDirectory();
+void readFileLineByLine(const std::string& filename);  // Declare function for reading a file line by line
+
+// Naive Bayes classifier functions
+void trainNaiveBayes(const std::vector<std::pair<std::string, std::string>>& labeledData);
+std::string classifyWithNaiveBayes(const std::string& fileContent);
+
+#endif

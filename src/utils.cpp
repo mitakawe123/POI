@@ -2,12 +2,16 @@
 #include <fstream>
 #include <string>
 #include <filesystem>
-
+#include <sstream>
+#include <map>
+#include <cmath>
+#include <vector>
 #include "config.hpp"
 #include "utils.hpp"
 
 using namespace std;
 namespace fs = std::filesystem;
+
 
 // string in C++ is value type that is why we are passing filename reference 
 void readFileLineByLine(const string& filename) {
@@ -24,11 +28,14 @@ void readFileLineByLine(const string& filename) {
     }
 }
 
-void readFilesInDirectory() {
+std::vector<std::string> readFilesInDirectory() {
+    std::vector<std::string> files;
+
     for (const auto& filePath : fs::directory_iterator(Config::directoryPath)) {
-        if(fs::is_regular_file(filePath)) {
-            string file = filePath.path().string();
-            readFileLineByLine(file);
+        if (fs::is_regular_file(filePath)) {
+            files.push_back(filePath.path().string());  // Add file path to vector
         }
     }
+
+    return files;  // Return the vector of file paths
 }

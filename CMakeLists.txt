@@ -1,10 +1,14 @@
 cmake_minimum_required(VERSION 3.31)
 
+# Add the project name and version
+project(POI)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include_directories(${CMAKE_SOURCE_DIR}/include) 
-include_directories(${CMAKE_SOURCE_DIR}/data) 
+include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/data)
+
 add_executable(main 
     src/main.cpp 
     src/utils.cpp
