@@ -5,22 +5,29 @@
 #include <queue>
 #include <omp.h>
 #include <condition_variable>
-#include "train_model.hpp" 
-#include "worker.hpp"  // Include the header file for worker functions
+#include "train_model.hpp"
+#include "worker.hpp"
 #include "utils.hpp"
- // Include the header file for training model
+#include <filesystem>
 
+namespace fs = std::filesystem;
 using namespace std;
 
-const int NUM_WORKERS = 4;  // Number of worker threads
-std::vector<std::queue<std::string>> workerQueues(NUM_WORKERS);  // Each worker gets its own queue
-std::vector<int> workerEfficiencies(NUM_WORKERS, 1);  // Dummy efficiency (can be updated)
+const int NUM_WORKERS = 4;
+std::vector<std::queue<std::string>> workerQueues(NUM_WORKERS);
+std::vector<int> workerEfficiencies(NUM_WORKERS, 1);
 
-std::mutex mtx;  // Mutex to protect shared resources
-std::condition_variable cv;  // Condition variable to notify workers
-std::vector<bool> workerReady(NUM_WORKERS, false);  // Track worker readiness
-bool allFilesAssigned = false;  // Flag to indicate if all files are assigned
+std::mutex mtx;
+std::condition_variable cv;
+std::vector<bool> workerReady(NUM_WORKERS, false);
+bool allFilesAssigned = false;
 
+std::mutex modelMutex;
+std::condition_variable modelLoadedCV;
+bool modelLoaded = false;
+TrainModel* sharedModel = nullptr;
+
+// Function to get the least loaded worker
 int getLeastLoadedWorker() {
     int leastLoadedWorker = 0;
     size_t minQueueSize = workerQueues[0].size();
@@ -38,79 +45,100 @@ int getLeastLoadedWorker() {
             }
         }
     }
+
+    cout << "[DEBUG] Least loaded worker: " << leastLoadedWorker 
+         << " with queue size: " << minQueueSize << endl;
     return leastLoadedWorker;
 }
 
+// Manager function that assigns work to workers and loads the model
 void managerFunction(const std::vector<std::string>& files) {
-    // Step 1: Call the training model once (before worker threads)
+    // Load or train the model
     TrainModel trainModel;
+    std::string modelFilename = "model.dat"; 
+
     try {
-        trainModel.trainNaiveBayes();  // Training the model
-        trainModel.saveModel("model.dat");  // Saving the trained model
-        cout << "Training model completed and saved successfully." << endl;
+        std::cout << "[DEBUG] Checking if model exists..." << std::endl;
+        if (fs::exists(modelFilename)) {
+            trainModel.loadModel(modelFilename);
+            std::cout << "[DEBUG] Model loaded from file: " << modelFilename << std::endl;
+        } else {
+            std::cout << "[DEBUG] Model not found. Training..." << std::endl;
+            trainModel.trainNaiveBayes();
+            trainModel.saveModel(modelFilename);
+            std::cout << "[DEBUG] Model trained and saved." << std::endl;
+        }
+
+        // Share the model with workers
+        {
+            std::lock_guard<std::mutex> lock(modelMutex);
+            sharedModel = &trainModel;
+            modelLoaded = true;
+        }
+        modelLoadedCV.notify_all();
+        std::cout << "[DEBUG] Notified workers that the model is ready." << std::endl;
     } catch (const std::exception& e) {
-        cerr << "Error during training model: " << e.what() << endl;
+        std::cerr << "[ERROR] Model loading/training failed: " << e.what() << std::endl;
         return;
     }
 
-    // Step 2: Assign files to workers
-    cout << "Total files to process: " << files.size() << endl;
+    std::cout << "[DEBUG] Total files to process: " << files.size() << std::endl;
 
+    // Assign files to workers in parallel
     #pragma omp parallel for
     for (size_t i = 0; i < files.size(); ++i) {
         std::string file = files[i];
         int workerId = getLeastLoadedWorker();
 
-        #pragma omp critical
         {
+            std::lock_guard<std::mutex> lock(mtx);
             workerQueues[workerId].push(file);
-            workerReady[workerId] = true;  // Mark the worker as ready
+            std::cout << "[DEBUG] Assigned file " << file << " to worker " << workerId
+                      << " (Queue size now: " << workerQueues[workerId].size() << ")" << std::endl;
         }
-
-        cout << "Manager: Assigned file " << file << " to worker " << workerId << endl;
+        cv.notify_all();  // Notify workers immediately
     }
 
-    // Notify workers that all files are assigned
     {
         std::lock_guard<std::mutex> lock(mtx);
         allFilesAssigned = true;
     }
-    cv.notify_all();  // Notify all workers to start processing
+    cv.notify_all();
+
+    std::cout << "[DEBUG] Notified all workers that all files are assigned." << std::endl;
 }
 
+
 int main() {
-    // Read files from the directory
+    cout << "[DEBUG] Reading files from the directory..." << endl;
     std::vector<std::string> files = readFilesInDirectory();
     if (files.empty()) {
-        cerr << "Error: No files found in the directory!" << endl;
+        cerr << "[ERROR] No files found!" << endl;
         return 1;
     }
 
-    cout << "Files successfully loaded. Total files: " << files.size() << endl;
+    cout << "[DEBUG] Files successfully loaded. Total files: " << files.size() << endl;
 
-    // Create worker threads
     std::vector<std::thread> workerThreads;
     for (int i = 0; i < NUM_WORKERS; ++i) {
         workerThreads.push_back(std::thread(workerFunction, i, std::ref(workerQueues[i])));
-        cout << "Started worker thread " << i << endl;
+        cout << "[DEBUG] Started worker thread " << i << endl;
     }
 
-    // Distribute work via the manager
     try {
         managerFunction(files);
     } catch (const std::exception& e) {
-        cerr << "Error in manager function: " << e.what() << endl;
+        cerr << "[ERROR] Manager function error: " << e.what() << endl;
         return 1;
     }
 
-    // Wait for all workers to finish processing
     try {
         for (auto& thread : workerThreads) {
             thread.join();
         }
-        cout << "All workers finished processing." << endl;
+        cout << "[DEBUG] All workers finished processing." << endl;
     } catch (const std::exception& e) {
-        cerr << "Error while joining worker threads: " << e.what() << endl;
+        cerr << "[ERROR] Thread join error: " << e.what() << endl;
         return 1;
     }
 

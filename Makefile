@@ -160,6 +160,30 @@ src/classifier.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/classifier.cpp.s
 .PHONY : src/classifier.cpp.s
 
+src/genre_model.o: src/genre_model.cpp.o
+.PHONY : src/genre_model.o
+
+# target to build an object file
+src/genre_model.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/genre_model.cpp.o
+.PHONY : src/genre_model.cpp.o
+
+src/genre_model.i: src/genre_model.cpp.i
+.PHONY : src/genre_model.i
+
+# target to preprocess a source file
+src/genre_model.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/genre_model.cpp.i
+.PHONY : src/genre_model.cpp.i
+
+src/genre_model.s: src/genre_model.cpp.s
+.PHONY : src/genre_model.s
+
+# target to generate assembly for a file
+src/genre_model.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/genre_model.cpp.s
+.PHONY : src/genre_model.cpp.s
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -183,6 +207,30 @@ src/main.s: src/main.cpp.s
 src/main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/main.cpp.s
 .PHONY : src/main.cpp.s
+
+src/train_model.o: src/train_model.cpp.o
+.PHONY : src/train_model.o
+
+# target to build an object file
+src/train_model.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/train_model.cpp.o
+.PHONY : src/train_model.cpp.o
+
+src/train_model.i: src/train_model.cpp.i
+.PHONY : src/train_model.i
+
+# target to preprocess a source file
+src/train_model.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/train_model.cpp.i
+.PHONY : src/train_model.cpp.i
+
+src/train_model.s: src/train_model.cpp.s
+.PHONY : src/train_model.s
+
+# target to generate assembly for a file
+src/train_model.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/train_model.cpp.s
+.PHONY : src/train_model.cpp.s
 
 src/utils.o: src/utils.cpp.o
 .PHONY : src/utils.o
@@ -245,9 +293,15 @@ help:
 	@echo "... src/classifier.o"
 	@echo "... src/classifier.i"
 	@echo "... src/classifier.s"
+	@echo "... src/genre_model.o"
+	@echo "... src/genre_model.i"
+	@echo "... src/genre_model.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/train_model.o"
+	@echo "... src/train_model.i"
+	@echo "... src/train_model.s"
 	@echo "... src/utils.o"
 	@echo "... src/utils.i"
 	@echo "... src/utils.s"

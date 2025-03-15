@@ -9,8 +9,6 @@
 std::vector<std::string> readFilesInDirectory();
 void readFileLineByLine(const std::string& filename);  // Declare function for reading a file line by line
 
-// Naive Bayes classifier functions
-void trainNaiveBayes(const std::vector<std::pair<std::string, std::string>>& labeledData);
-std::string classifyWithNaiveBayes(const std::string& fileContent);
+void processFile(const std::string& filePath, std::string& fileContent);
 
 #endif

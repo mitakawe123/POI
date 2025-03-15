@@ -1,81 +1,91 @@
 #include "classifier.hpp"
 #include <iostream>
-#include <fstream>
 #include <sstream>
-#include <unordered_map>
+#include <limits>
 #include <cmath>
 #include <algorithm>
+#include <genre_model.hpp>
+#include <train_model.hpp>
 
-using namespace std;
+// Constructor to use the shared model
+Classifier::Classifier(TrainModel& model) : sharedModel(model) {
+    std::cout << "[DEBUG] Classifier initialized with shared model." << std::endl;
+    std::cout << "[DEBUG] Total genre models in shared model: " << sharedModel.genreModels.size() << std::endl;
+}
 
-vector<string> Classify::preprocessText(const string& text) {
-    vector<string> words;
-    stringstream ss(text);
-    string word;
-    while (ss >> word) {
-        transform(word.begin(), word.end(), word.begin(), ::tolower);
+// Preprocess the text (convert to lowercase and remove punctuation)
+std::vector<std::string> Classifier::preprocessText(const std::string& text) {
+    std::vector<std::string> words;
+    std::istringstream iss(text);
+    std::string word;
+
+    std::cout << "[DEBUG] Preprocessing text..." << std::endl;
+    while (iss >> word) {
+        std::transform(word.begin(), word.end(), word.begin(), ::tolower);
+        word.erase(std::remove_if(word.begin(), word.end(), ::ispunct), word.end());
         words.push_back(word);
     }
+
+    std::cout << "[DEBUG] Preprocessed text contains " << words.size() << " words." << std::endl;
     return words;
 }
 
-void Classify::loadModel(const string& filename) {
-    ifstream inFile(filename, ios::binary);
-    while (!inFile.eof()) {
-        string genre;
-        char ch;
-        while (inFile.get(ch) && ch != '\0') {
-            genre += ch;
+// Calculate log probability for the text given the genre model
+double Classifier::calculateLogProbability(const std::vector<std::string>& words, const GenreModel& genreModel) {
+    std::cout << "[DEBUG] Calculating log probability for genre: " << genreModel.genre << std::endl;
+    std::cout << "[DEBUG] Genre Model Prior Probability: " << genreModel.priorProbability << std::endl;
+
+    double logProbability = std::log(genreModel.priorProbability);
+    std::cout << "[DEBUG] Initial log probability (prior): " << logProbability << std::endl;
+
+    for (const auto& word : words) {
+        auto it = genreModel.wordProbabilities.find(word);
+        if (it != genreModel.wordProbabilities.end()) {
+            logProbability += std::log(it->second);
+            std::cout << "[DEBUG] Word '" << word << "' found in model. Updated log probability: " << logProbability << std::endl;
+        } else {
+            logProbability += std::log(1.0 / (genreModel.totalWordsInGenre + 1));  // Smoothing
+            std::cout << "[DEBUG] Word '" << word << "' NOT found. Applied smoothing. Updated log probability: " << logProbability << std::endl;
         }
-
-        if (genre.empty()) break;
-
-        GenreModel model;
-        inFile.read(reinterpret_cast<char*>(&model.priorProbability), sizeof(model.priorProbability));
-        inFile.read(reinterpret_cast<char*>(&model.totalWordsInGenre), sizeof(model.totalWordsInGenre));
-
-        while (!inFile.eof()) {
-            string word;
-            while (inFile.get(ch) && ch != '\0') {
-                word += ch;
-            }
-
-            if (word.empty()) break;
-
-            double probability;
-            inFile.read(reinterpret_cast<char*>(&probability), sizeof(probability));
-            model.wordProbabilities[word] = probability;
-        }
-
-        genreModels[genre] = model;
     }
-    inFile.close();
+
+    std::cout << "[DEBUG] Final log probability for genre '" << genreModel.genre << "': " << logProbability << std::endl;
+    return logProbability;
 }
 
-string Classify::classifyWithNaiveBayes(const string& summary) {
-    vector<string> words = preprocessText(summary);
-    string bestGenre;
-    double bestScore = -INFINITY;
+// Classify the text directly (without needing a file)
+std::string Classifier::classifyText(const std::string& text) {
+    std::cout << "[DEBUG] Starting text classification..." << std::endl;
+    
+    std::vector<std::string> words = preprocessText(text);
 
-    for (const auto& genreEntry : genreModels) {
-        string genre = genreEntry.first;
-        const GenreModel& model = genreEntry.second;
+    std::string bestGenre;
+    double bestLogProbability = -std::numeric_limits<double>::infinity();
 
-        double score = log(model.priorProbability);
+    std::cout << "[DEBUG] Evaluating " << sharedModel.genreModels.size() << " genre models." << std::endl;
+    
+    for (const auto& genreEntry : sharedModel.genreModels) {
+        const std::string& genre = genreEntry.first;
+        const GenreModel& genreModel = genreEntry.second;
+        
+        std::cout << "[DEBUG] Checking genre: " << genre << std::endl;
+        std::cout << "[DEBUG] Genre model details: " << std::endl;
+        std::cout << "[DEBUG] Genre: " << genreModel.genre << ", Prior Probability: " << genreModel.priorProbability
+                  << ", Total Words in Genre: " << genreModel.totalWordsInGenre << std::endl;
 
-        for (const string& word : words) {
-            if (model.wordProbabilities.find(word) != model.wordProbabilities.end()) {
-                score += log(model.wordProbabilities.at(word));
-            } else {
-                score += log(1e-6); // Small probability for unseen words
-            }
-        }
+        double logProbability = calculateLogProbability(words, genreModel);
 
-        if (score > bestScore) {
-            bestScore = score;
+        if (logProbability > bestLogProbability) {
+            bestLogProbability = logProbability;
             bestGenre = genre;
         }
     }
 
+    if (bestGenre.empty()) {
+        std::cerr << "[ERROR] Classification failed: No valid genre found." << std::endl;
+        return "Unknown";
+    }
+
+    std::cout << "[INFO] Text classified as: " << bestGenre << " with log probability: " << bestLogProbability << std::endl;
     return bestGenre;
 }

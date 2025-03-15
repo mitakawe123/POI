@@ -1,24 +1,29 @@
 #ifndef CLASSIFIER_HPP
 #define CLASSIFIER_HPP
 
-#include <unordered_map>
-#include <vector>
 #include <string>
+#include <vector>
+#include <unordered_map>
+#include "train_model.hpp"  // Include TrainModel header
 
-struct GenreModel {
-    std::unordered_map<std::string, double> wordProbabilities;
-    double priorProbability;
-    int totalWordsInGenre;
-};
+// Forward declaration for GenreModel if it's defined in another file
+class GenreModel;
 
-class Classify {
+class Classifier {
 public:
-    void loadModel(const std::string& filename);
-    std::string classifyWithNaiveBayes(const std::string& summary);
+    // Constructor to use the shared model
+    Classifier(TrainModel& model);
+    
+    // Method to classify text directly (without file)
+    std::string classifyText(const std::string& text);
     
 private:
-    std::unordered_map<std::string, GenreModel> genreModels;
+    // Shared model containing genre models
+    TrainModel& sharedModel;
+    
+    // Helper methods for preprocessing and calculating probabilities
     std::vector<std::string> preprocessText(const std::string& text);
+    double calculateLogProbability(const std::vector<std::string>& words, const GenreModel& genreModel);
 };
 
-#endif
+#endif // CLASSIFIER_HPP

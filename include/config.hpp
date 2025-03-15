@@ -2,6 +2,8 @@
 #define CONFIG_HPP
 
 #include <string>
+#include <limits>
+
 
 using namespace std;
 

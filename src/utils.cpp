@@ -39,3 +39,15 @@ std::vector<std::string> readFilesInDirectory() {
 
     return files;  // Return the vector of file paths
 }
+
+void processFile(const std::string& filePath, std::string& fileContent) {
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        throw std::runtime_error("Unable to open file: " + filePath);
+    }
+    
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    fileContent = buffer.str();
+    file.close();
+}
