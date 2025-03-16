@@ -1,117 +1,62 @@
 #include <iostream>
 #include <vector>
+#include <queue>
 #include <string>
 #include <thread>
-#include <queue>
-#include <omp.h>
-#include <condition_variable>
+#include <filesystem>
+#include <future>  // For async
 #include "train_model.hpp"
+#include "classifier.hpp"
+#include "manager.hpp"
 #include "worker.hpp"
 #include "utils.hpp"
-#include <filesystem>
 
 namespace fs = std::filesystem;
 using namespace std;
 
 const int NUM_WORKERS = 4;
 std::vector<std::queue<std::string>> workerQueues(NUM_WORKERS);
-std::vector<int> workerEfficiencies(NUM_WORKERS, 1);
+std::vector<int> workerEfficiencies(NUM_WORKERS, 1); // Initialize worker efficiencies (default value 1)
 
-std::mutex mtx;
-std::condition_variable cv;
-std::vector<bool> workerReady(NUM_WORKERS, false);
-bool allFilesAssigned = false;
-
-std::mutex modelMutex;
-std::condition_variable modelLoadedCV;
-bool modelLoaded = false;
-TrainModel* sharedModel = nullptr;
-
-// Function to get the least loaded worker
-int getLeastLoadedWorker() {
-    int leastLoadedWorker = 0;
-    size_t minQueueSize = workerQueues[0].size();
-
-    #pragma omp parallel for
-    for (int i = 1; i < NUM_WORKERS; ++i) {
-        size_t currentQueueSize = workerQueues[i].size();
-        size_t weightedQueueSize = currentQueueSize * workerEfficiencies[i];
-
-        #pragma omp critical
-        {
-            if (weightedQueueSize < minQueueSize) {
-                minQueueSize = weightedQueueSize;
-                leastLoadedWorker = i;
-            }
-        }
-    }
-
-    cout << "[DEBUG] Least loaded worker: " << leastLoadedWorker 
-         << " with queue size: " << minQueueSize << endl;
-    return leastLoadedWorker;
-}
-
-// Manager function that assigns work to workers and loads the model
-void managerFunction(const std::vector<std::string>& files) {
-    // Load or train the model
-    TrainModel trainModel;
-    std::string modelFilename = "model.dat"; 
+// Function to load or train the model
+std::unique_ptr<TrainModel> loadOrTrainModel(const std::string& modelFilename) {
+    auto trainModel = make_unique<TrainModel>();
 
     try {
-        std::cout << "[DEBUG] Checking if model exists..." << std::endl;
         if (fs::exists(modelFilename)) {
-            trainModel.loadModel(modelFilename);
-            std::cout << "[DEBUG] Model loaded from file: " << modelFilename << std::endl;
+            trainModel->loadModel(modelFilename);
+            cout << "[DEBUG] Model loaded from file: " << modelFilename << endl;
         } else {
-            std::cout << "[DEBUG] Model not found. Training..." << std::endl;
-            trainModel.trainNaiveBayes();
-            trainModel.saveModel(modelFilename);
-            std::cout << "[DEBUG] Model trained and saved." << std::endl;
+            cout << "[DEBUG] Model not found. Training..." << endl;
+            trainModel->trainNaiveBayes();
+            trainModel->saveModel(modelFilename);
+            cout << "[DEBUG] Model trained and saved." << endl;
         }
-
-        // Share the model with workers
-        {
-            std::lock_guard<std::mutex> lock(modelMutex);
-            sharedModel = &trainModel;
-            modelLoaded = true;
-        }
-        modelLoadedCV.notify_all();
-        std::cout << "[DEBUG] Notified workers that the model is ready." << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "[ERROR] Model loading/training failed: " << e.what() << std::endl;
-        return;
+        cerr << "[ERROR] Model loading/training failed: " << e.what() << endl;
+        return nullptr;
     }
 
-    std::cout << "[DEBUG] Total files to process: " << files.size() << std::endl;
-
-    // Assign files to workers in parallel
-    #pragma omp parallel for
-    for (size_t i = 0; i < files.size(); ++i) {
-        std::string file = files[i];
-        int workerId = getLeastLoadedWorker();
-
-        {
-            std::lock_guard<std::mutex> lock(mtx);
-            workerQueues[workerId].push(file);
-            std::cout << "[DEBUG] Assigned file " << file << " to worker " << workerId
-                      << " (Queue size now: " << workerQueues[workerId].size() << ")" << std::endl;
-        }
-        cv.notify_all();  // Notify workers immediately
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(mtx);
-        allFilesAssigned = true;
-    }
-    cv.notify_all();
-
-    std::cout << "[DEBUG] Notified all workers that all files are assigned." << std::endl;
+    return trainModel;
 }
 
+// Function to handle worker thread initialization
+void startWorkerThreads(int numWorkers, vector<std::thread>& workerThreads, 
+                        std::vector<std::queue<std::string>>& workerQueues) {
+    for (int i = 0; i < numWorkers; ++i) {
+        // Start worker thread and pass queue by reference
+        workerThreads.emplace_back(workerFunction, i, std::ref(workerQueues[i]));
+        cout << "[DEBUG] Started worker thread " << i << endl;
+    }
+}
 
 int main() {
     cout << "[DEBUG] Reading files from the directory..." << endl;
-    std::vector<std::string> files = readFilesInDirectory();
+
+    // Read files asynchronously
+    auto filesFuture = std::async(std::launch::async, readFilesInDirectory);
+    auto files = filesFuture.get();
+
     if (files.empty()) {
         cerr << "[ERROR] No files found!" << endl;
         return 1;
@@ -119,28 +64,32 @@ int main() {
 
     cout << "[DEBUG] Files successfully loaded. Total files: " << files.size() << endl;
 
+    // Load or train the model asynchronously
+    string modelFilename = "model.dat";
+    auto trainModel = loadOrTrainModel(modelFilename);
+    if (!trainModel) return 1;
+
+    // Initialize the classifier using the singleton pattern
+    Classifier::initialize(*trainModel); // Only need to initialize once
+    Classifier& classifier = Classifier::getInstance(); // Access the initialized singleton
+    cout << "[DEBUG] Classifier initialized with trained model." << endl;
+
+    // Initialize Manager (pass workerEfficiencies as the second argument)
+    Manager manager(NUM_WORKERS, workerQueues, workerEfficiencies);
+
+    // Start worker threads (but they will wait for tasks from the Manager)
     std::vector<std::thread> workerThreads;
-    for (int i = 0; i < NUM_WORKERS; ++i) {
-        workerThreads.push_back(std::thread(workerFunction, i, std::ref(workerQueues[i])));
-        cout << "[DEBUG] Started worker thread " << i << endl;
+    startWorkerThreads(NUM_WORKERS, workerThreads, workerQueues);
+
+    // Distribute tasks to workers using Manager
+    manager.distributeTasks(files);
+
+    // Wait for all worker threads to finish (if they finish before main thread ends)
+    for (auto& thread : workerThreads) {
+        thread.join();
     }
 
-    try {
-        managerFunction(files);
-    } catch (const std::exception& e) {
-        cerr << "[ERROR] Manager function error: " << e.what() << endl;
-        return 1;
-    }
-
-    try {
-        for (auto& thread : workerThreads) {
-            thread.join();
-        }
-        cout << "[DEBUG] All workers finished processing." << endl;
-    } catch (const std::exception& e) {
-        cerr << "[ERROR] Thread join error: " << e.what() << endl;
-        return 1;
-    }
+    cout << "[DEBUG] All workers finished processing." << endl;
 
     return 0;
 }

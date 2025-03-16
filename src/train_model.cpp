@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <locale>
 #include <codecvt>
+#include <omp.h>
 
 namespace fs = std::filesystem;
 
@@ -39,32 +40,47 @@ std::vector<std::pair<std::string, std::string>> TrainModel::readCSV(const std::
         return rows;
     }
 
-    std::getline(file, line);  // Skip header
+    std::getline(file, line);  // Skip header (index and title)
 
     while (std::getline(file, line)) {
         std::wstringstream ss(line);
         std::wstring dummy;
-        std::getline(ss, dummy, L',');
-        std::getline(ss, dummy, L',');
 
+        // Skip the first two columns (index and title)
+        std::getline(ss, dummy, L',');  // Skip first column (index)
+        std::getline(ss, dummy, L',');  // Skip second column (title)
+
+        // Now get the genre from the third column
         std::wstring genre;
         std::getline(ss, genre, L',');
 
+        // If genre is empty, continue with next line
         if (genre.empty()) continue;
 
+        // Read the summary from the remaining columns (might span multiple lines)
         std::wstring summary;
         bool inSummary = true;
         std::wstring summaryLine;
-        std::getline(ss, summaryLine);
+        std::getline(ss, summaryLine);  // Start reading the summary (fourth column)
+
+        // Add the initial summary line
         summary += summaryLine;
 
+        // Now, read the rest of the summary until we encounter "(less)"
         while (std::getline(file, line)) {
-            if (line.find(L"(less)") != std::wstring::npos) break;
+            // If the line contains "(less)", we stop reading the summary
+            if (line.find(L"(less)") != std::wstring::npos) {
+                break;
+            }
+
+            // Skip empty lines
             if (line.empty()) continue;
 
+            // Add the line to the summary
             summary += L" " + line;
         }
 
+        // Store the genre and the summary in the vector
         rows.push_back({std::string(genre.begin(), genre.end()), std::string(summary.begin(), summary.end())});
     }
 
@@ -105,21 +121,42 @@ void TrainModel::trainNaiveBayes() {
     std::unordered_map<std::string, int> genreDocumentCounts;
     std::unordered_map<std::string, std::unordered_map<std::string, int>> tempWordCounts;
 
-    for (const auto& record : trainingData) {
-        std::string genre = record.first;
-        std::string summary = record.second;
-        std::vector<std::string> words = preprocessText(summary);
-        genreDocumentCounts[genre]++;
-        totalDocuments++;
+    // Parallelizing the document processing using OpenMP
+    #pragma omp parallel for
+    for (size_t i = 0; i < trainingData.size(); ++i) {
+        std::string genre = trainingData[i].first;
 
-        // Count the word occurrences per genre
-        for (const std::string& word : words) {
-            tempWordCounts[genre][word]++;
+        // Only process genres that are in predefinedGenres
+        if (std::find(predefinedGenres.begin(), predefinedGenres.end(), genre) == predefinedGenres.end()) {
+            continue;  // Skip this document if the genre is not in predefinedGenres
+        }
+
+        std::string summary = trainingData[i].second;
+        std::vector<std::string> words = preprocessText(summary);
+
+        #pragma omp critical
+        {
+            genreDocumentCounts[genre]++;
+            totalDocuments++;
+
+            // Count the word occurrences per genre (critical section)
+            for (const std::string& word : words) {
+                tempWordCounts[genre][word]++;
+            }
+        }
+
+        // Debugging: Output progress every 1000 documents processed
+        if (i % 1000 == 0) {
+            std::cout << "Processed " << i << " documents..." << std::endl;
         }
     }
 
-    // Build the model for each genre
-    for (const auto& genreEntry : tempWordCounts) {
+    // Debugging: Output intermediate information about total documents processed
+    std::cout << "Total Documents Processed: " << totalDocuments << std::endl;
+
+    // Building the model for each genre
+    #pragma omp parallel for
+    for (auto& genreEntry : tempWordCounts) {
         std::string genre = genreEntry.first;
         GenreModel model;
         model.totalWordsInGenre = 0;
@@ -130,18 +167,29 @@ void TrainModel::trainNaiveBayes() {
         }
 
         model.priorProbability = static_cast<double>(genreDocumentCounts[genre]) / totalDocuments;
+
+        // Normalize word probabilities
         for (auto& wordEntry : model.wordProbabilities) {
             wordEntry.second /= model.totalWordsInGenre;
         }
 
-        genreModels[genre] = model;
+        // Store the final model for the genre
+        #pragma omp critical
+        {
+            genreModels[genre] = model;
+        }
+
+        // Debugging: Output progress after processing each genre
+        std::cout << "Finished processing genre: " << genre << std::endl;
     }
 
     displayModel();
 }
+
 void TrainModel::addGenreModel(const std::string& genre, GenreModel& genreModel) {
     genreModels[genre] = genreModel;
 }
+
 void TrainModel::saveModel(const std::string& filename) {
     std::string directory = "/mnt/c/Users/Yo/Desktop/POI/POI/";
     std::string fullPath = directory + filename;
@@ -220,29 +268,29 @@ void TrainModel::loadModel(const std::string& filename) {
         return;
     }
 
-    genreModels.clear();
-    std::string genre;
-    while (inFile) {
+    std::cout << "Loading model from: " << filename << std::endl;
+
+    while (inFile.peek() != EOF) {
+        std::string genre;
         std::getline(inFile, genre, '\0');
-        if (genre.empty()) continue;
 
-        GenreModel model;
-        inFile.read(reinterpret_cast<char*>(&model.priorProbability), sizeof(model.priorProbability));
-        inFile.read(reinterpret_cast<char*>(&model.totalWordsInGenre), sizeof(model.totalWordsInGenre));
+        GenreModel genreModel;
+        inFile.read(reinterpret_cast<char*>(&genreModel.priorProbability), sizeof(genreModel.priorProbability));
+        inFile.read(reinterpret_cast<char*>(&genreModel.totalWordsInGenre), sizeof(genreModel.totalWordsInGenre));
 
-        while (inFile) {
+        while (inFile.peek() != EOF) {
             std::string word;
             std::getline(inFile, word, '\0');
             if (word.empty()) break;
 
-            double wordProb;
-            inFile.read(reinterpret_cast<char*>(&wordProb), sizeof(wordProb));
-            model.wordProbabilities[word] = wordProb;
+            double probability;
+            inFile.read(reinterpret_cast<char*>(&probability), sizeof(probability));
+            genreModel.wordProbabilities[word] = probability;
         }
 
-        genreModels[genre] = model;
+        genreModels[genre] = genreModel;
     }
 
     inFile.close();
-    displayModel();
+    std::cout << "Model loaded successfully." << std::endl;
 }

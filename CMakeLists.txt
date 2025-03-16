@@ -24,4 +24,5 @@ add_executable(main
     src/worker.cpp
     src/classifier.cpp
     src/train_model.cpp
-    src/genre_model.cpp)
+    src/genre_model.cpp
+    src/manager.cpp)
