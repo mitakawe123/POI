@@ -5,6 +5,8 @@
 #include <sstream>         // Include the sstream header
 #include <utils.hpp>       // Include the utils header
 
+using namespace std;
+
 // Worker function that processes tasks from the queue
 void workerFunction(int workerId, std::queue<std::string>& workerQueue) {
     try {

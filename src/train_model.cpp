@@ -196,11 +196,11 @@ void TrainModel::saveModel(const std::string& filename) {
     std::string directory = "/mnt/c/Users/Yo/Desktop/POI/POI/";
     std::string fullPath = directory + filename;
 
-    if (!fs::exists(projectDir)) {
-        if (fs::create_directory(projectDir)) {
-            cout << "Created directory: " << projectDir << endl;
+    if (!fs::exists(fullPath)) {
+        if (fs::create_directory(fullPath)) {
+            cout << "Created directory: " << fullPath << endl;
         } else {
-            cerr << "Error: Failed to create directory: " << projectDir << endl;
+            cerr << "Error: Failed to create directory: " << fullPath << endl;
             return;
         }
     }
