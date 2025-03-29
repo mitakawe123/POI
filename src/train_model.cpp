@@ -9,7 +9,6 @@
 #include <filesystem>
 #include <locale>
 #include <codecvt>
-#include <omp.h>
 
 using namespace std;
 namespace fs = filesystem;
