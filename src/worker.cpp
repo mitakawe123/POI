@@ -57,8 +57,8 @@ void workerFunction(int workerId, std::queue<std::string>& workerQueue) {
             }
         }
 
-        std::cout << "[DEBUG] Worker " << workerId << " finished processing." << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "[ERROR] Worker " << workerId << ": " << e.what() << std::endl;
+        cout << "[DEBUG] Worker " << workerId << " finished processing." << endl;
+    } catch (const exception& e) {
+        cerr << "[ERROR] Worker " << workerId << ": " << e.what() << endl;
     }
 }

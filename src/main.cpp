@@ -11,8 +11,8 @@
 #include "worker.hpp"
 #include "utils.hpp"
 
-namespace fs = std::filesystem;
 using namespace std;
+namespace fs = filesystem;
 
 const int NUM_WORKERS = 4;
 std::vector<std::queue<std::string>> workerQueues(NUM_WORKERS);
