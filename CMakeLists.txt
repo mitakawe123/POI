@@ -26,3 +26,5 @@ add_executable(main
     src/train_model.cpp
     src/genre_model.cpp
     src/manager.cpp)
+
+target_link_libraries(main pthread)
