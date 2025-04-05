@@ -192,14 +192,14 @@ void TrainModel::addGenreModel(const std::string& genre, GenreModel& genreModel)
 }
 
 void TrainModel::saveModel(const std::string& filename) {
-    std::string directory = "/mnt/c/Users/Yo/Desktop/POI/POI/";
-    std::string fullPath = directory + filename;
+    string directory = "./models/";  // Relative path don't use absolute path Yo
+    string fullPath = directory + filename;
 
-    if (!fs::exists(fullPath)) {
-        if (fs::create_directory(fullPath)) {
-            cout << "Created directory: " << fullPath << endl;
+    if (!fs::exists(directory)) {
+        if (fs::create_directory(directory)) {
+            cout << "Created directory: " << directory << endl;
         } else {
-            cerr << "Error: Failed to create directory: " << fullPath << endl;
+            cerr << "Error: Failed to create directory: " << directory << endl;
             return;
         }
     }
