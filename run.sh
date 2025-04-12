@@ -17,6 +17,9 @@ for arg in "$@"; do
     esac
 done
 
+# Record start time
+START_TIME=$(date +%s)
+
 # Remove existing build directory (if it exists)
 if [ -d "build" ]; then
     echo "Removing existing build directory..."
@@ -56,3 +59,12 @@ if [ $? -ne 0 ]; then
     echo "Failed to run the executable. Exiting..."
     exit 1
 fi
+
+# Record end time
+END_TIME=$(date +%s)
+
+# Calculate the elapsed time
+ELAPSED_TIME=$((END_TIME - START_TIME))
+
+# Output the elapsed time
+echo "Total execution time: $ELAPSED_TIME seconds."
