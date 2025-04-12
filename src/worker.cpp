@@ -1,9 +1,11 @@
 #include "worker.hpp"
 #include <iostream>
 #include <fstream>
-#include <classifier.hpp>  // Include the classifier header
-#include <sstream>         // Include the sstream header
-#include <utils.hpp>       // Include the utils header
+#include <classifier.hpp> 
+#include <sstream>        
+#include <utils.hpp>      
+#include <thread>   
+#include <chrono>   
 
 using namespace std;
 
@@ -12,40 +14,38 @@ void workerFunction(int workerId, std::queue<std::string>& workerQueue) {
     try {
         std::cout << "[DEBUG] Worker " << workerId << " started." << std::endl;
 
-        // Get the singleton instance of Classifier (it will handle the model internally)
         Classifier& classifier = Classifier::getInstance();
 
         while (true) {
-            std::string file;
-
-            // If no more files in the queue, exit the loop
             if (workerQueue.empty()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Wait a bit before retrying
+                continue;
+            }
+
+            std::string file = workerQueue.front();
+            workerQueue.pop();
+
+            // Check for shutdown signal
+            if (file == "__EXIT__") {
+                std::cout << "[DEBUG] Worker " << workerId << " received shutdown signal." << std::endl;
                 break;
             }
 
-            // Get the file from the queue
-            file = workerQueue.front();
-            workerQueue.pop();
-
             std::cout << "[DEBUG] Worker " << workerId << " processing file: " << file << std::endl;
 
-            // Process the file (read content)
+            // Read and classify file
             std::string fileContent;
             try {
                 processFile(file, fileContent);
                 std::cout << "[DEBUG] Worker " << workerId << " read file: " << file << std::endl;
             } catch (const std::exception& e) {
                 std::cerr << "[ERROR] Worker " << workerId << " reading file " << file << ": " << e.what() << std::endl;
-                continue;  // Skip this file and continue with the next one
+                continue;
             }
 
-            // Classify the text using the classifier (without knowing the model)
-            std::string predictedGenre = classifier.classifyText(fileContent);  // Classifier is responsible for model usage
+            std::string predictedGenre = classifier.classifyText(fileContent);
 
             if (!predictedGenre.empty()) {
-                std::cout << "[DEBUG] Worker " << workerId << " classified file " << file << " as " << predictedGenre << std::endl;
-
-                // Write the result to the report file
                 std::ofstream reportFile("classification_report.txt", std::ios::app);
                 if (reportFile.is_open()) {
                     reportFile << "File: " << file << ", Predicted Genre: " << predictedGenre << std::endl;
@@ -59,8 +59,8 @@ void workerFunction(int workerId, std::queue<std::string>& workerQueue) {
             }
         }
 
-        cout << "[DEBUG] Worker " << workerId << " finished processing." << endl;
-    } catch (const exception& e) {
-        cerr << "[ERROR] Worker " << workerId << ": " << e.what() << endl;
+        std::cout << "[DEBUG] Worker " << workerId << " finished processing." << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Worker " << workerId << ": " << e.what() << std::endl;
     }
 }

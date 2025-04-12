@@ -5,6 +5,8 @@
 #include <vector>
 #include <limits>
 
+using namespace std;
+
 Manager::Manager(int numWorkers, std::vector<std::queue<std::string>>& queues, std::vector<int>& efficiencies)
     : numWorkers(numWorkers), workerQueues(queues), workerEfficiencies(efficiencies) {
     // No need for atomic variables here, we will rely on the efficiency of dynamic scheduling.
@@ -27,20 +29,37 @@ int Manager::getLeastLoadedWorker() {
     return leastLoadedWorker;
 }
 
-void Manager::distributeTasks(const std::vector<std::string>& files) {
-    std::cout << "[DEBUG] Starting task distribution. Total files: " << files.size() << std::endl;
+void Manager::distributeTasks(const vector<string>& files) {
+    cout << "[DEBUG] Starting task distribution. Total files: " << files.size() << endl;
 
-    // Instead of locking mechanisms, just select the least loaded worker dynamically
+    // Distribute files to workers
     #pragma omp parallel
     {
-        // Each thread works independently and assigns tasks to the least loaded worker
         #pragma omp for schedule(dynamic)
         for (size_t i = 0; i < files.size(); ++i) {
             int workerId = getLeastLoadedWorker();  // Select the least loaded worker dynamically
-            // Assign the task to the least loaded worker
+
+            // Push the file into the selected queue
             workerQueues[workerId].push(files[i]);
+
+            // Log the assignment — ensure thread-safe output
+            #pragma omp critical
+            {
+                cout << "[DEBUG] Assigned file \"" << files[i] << "\" to worker " << workerId << endl;
+            }
         }
     }
 
-    std::cout << "[DEBUG] Task distribution completed." << std::endl;
+    // After task distribution, add exit signals to each queue
+    for (size_t i = 0; i < workerQueues.size(); ++i) {
+        workerQueues[i].push("__EXIT__");  // Send exit signal to each worker
+        cout << "[DEBUG] Sent exit signal to worker " << i << endl;
+    }
+
+    // After parallel region — log queue sizes
+    for (size_t i = 0; i < workerQueues.size(); ++i) {
+        cout << "[DEBUG] Queue " << i << " size after distribution: " << workerQueues[i].size() << endl;
+    }
+
+    cout << "[DEBUG] Task distribution completed." << endl;
 }
