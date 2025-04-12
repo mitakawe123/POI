@@ -4,7 +4,7 @@
 #include <string>
 #include <thread>
 #include <filesystem>
-#include <future>  // For async
+#include <future>
 #include "train_model.hpp"
 #include "classifier.hpp"
 #include "manager.hpp"
@@ -14,12 +14,12 @@
 using namespace std;
 namespace fs = filesystem;
 
-const int NUM_WORKERS = 4;
-std::vector<std::queue<std::string>> workerQueues(NUM_WORKERS);
-std::vector<int> workerEfficiencies(NUM_WORKERS, 1); // Initialize worker efficiencies (default value 1)
+int NUM_WORKERS = 10;
+vector<queue<string>> workerQueues(NUM_WORKERS);
+vector<int> workerEfficiencies(NUM_WORKERS, 1); // Initialize worker efficiencies (default value 1)
 
 // Function to load or train the model
-std::unique_ptr<TrainModel> loadOrTrainModel(const std::string& modelFilename) {
+unique_ptr<TrainModel> loadOrTrainModel(const string& modelFilename) {
     auto trainModel = make_unique<TrainModel>();
 
     try {
@@ -32,7 +32,7 @@ std::unique_ptr<TrainModel> loadOrTrainModel(const std::string& modelFilename) {
             trainModel->saveModel(modelFilename);
             cout << "[DEBUG] Model trained and saved." << endl;
         }
-    } catch (const std::exception& e) {
+    } catch (const exception& e) {
         cerr << "[ERROR] Model loading/training failed: " << e.what() << endl;
         return nullptr;
     }
@@ -41,20 +41,30 @@ std::unique_ptr<TrainModel> loadOrTrainModel(const std::string& modelFilename) {
 }
 
 // Function to handle worker thread initialization
-void startWorkerThreads(int numWorkers, vector<std::thread>& workerThreads, 
-                        std::vector<std::queue<std::string>>& workerQueues) {
+void startWorkerThreads(int numWorkers, vector<thread>& workerThreads, vector<queue<string>>& workerQueues) {
     for (int i = 0; i < numWorkers; ++i) {
         // Start worker thread and pass queue by reference
-        workerThreads.emplace_back(workerFunction, i, std::ref(workerQueues[i]));
+        workerThreads.emplace_back(workerFunction, i, ref(workerQueues[i]));
         cout << "[DEBUG] Started worker thread " << i << endl;
     }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc > 1) {
+        try {
+            NUM_WORKERS = stoi(argv[1]);
+            cout << "[DEBUG] Using " << NUM_WORKERS << " threads." << endl;
+        } catch (...) {
+            cerr << "[ERROR] Invalid thread count argument. Using default: 10." << endl;
+        }
+    } else {
+        cout << "[DEBUG] No thread count provided. Using default: 10." << endl;
+    }
+
     cout << "[DEBUG] Reading files from the directory..." << endl;
 
     // Read files asynchronously
-    auto filesFuture = std::async(std::launch::async, readFilesInDirectory);
+    auto filesFuture = async(launch::async, readFilesInDirectory);
     auto files = filesFuture.get();
 
     if (files.empty()) {
@@ -78,7 +88,7 @@ int main() {
     Manager manager(NUM_WORKERS, workerQueues, workerEfficiencies);
 
     // Start worker threads (but they will wait for tasks from the Manager)
-    std::vector<std::thread> workerThreads;
+    vector<thread> workerThreads;
     startWorkerThreads(NUM_WORKERS, workerThreads, workerQueues);
 
     // Distribute tasks to workers using Manager
